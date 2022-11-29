@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mc714-p2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mc714-p2
+  namespace: mc714-p2
+spec:
+  selector:
+    matchLabels:
+      app: mc714-p2
+  replicas: 3
+  persistentVolumeClaimRetentionPolicy:
+    whenScaled: Delete
+  volumeClaimTemplates:
+  - metadata:
+      name: paxos-ledger
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+  template:
+    metadata:
+      labels:
+        app: mc714-p2
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: app
+        image: mc714_p2:1.3.10
+        imagePullPolicy: Never
+        ports:
+        - name: epmd
+          containerPort: 4369
+          protocol: TCP
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        volumeMounts:
+        - name: paxos-ledger
+          mountPath: /var/paxos
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+---
+apiVersion: v1
+kind: Service
+apiVersion: v1
+metadata:
+  name: mc714-p2-nodes
+  namespace: mc714-p2
+spec:
+  clusterIP: None
+  selector:
+    app: mc714-p2
+  ports:
+    - name: epmd
+      port: 4369
+      targetPort: epmd
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+apiVersion: v1
+metadata:
+  name: mc714-p2-http
+  namespace: mc714-p2
+spec:
+  type: LoadBalancer
+  selector:
+    app: mc714-p2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

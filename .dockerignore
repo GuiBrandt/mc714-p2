@@ -1,0 +1,7 @@
+_build
+.elixir_ls
+deps
+test
+k8s
+Dockerfile
+README.md
