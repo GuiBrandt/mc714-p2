@@ -29,10 +29,10 @@ spec:
       labels:
         app: mc714-p2
     spec:
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 60
       containers:
       - name: app
-        image: mc714_p2:1.3.37
+        image: mc714_p2:1.3.45
         imagePullPolicy: Never
         ports:
         - name: epmd

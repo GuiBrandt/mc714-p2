@@ -245,8 +245,6 @@ defmodule MC714.P2.Consensus.Paxos do
   end
 
   defmodule RPC do
-    require Logger
-
     def request_ballot(peer, key, ballot),
       do: send_message(peer, key, {:request_ballot, Node.self(), ballot})
 
@@ -280,15 +278,8 @@ defmodule MC714.P2.Consensus.Paxos do
 
   Esta função só pode ser chamada uma vez. Caso contrário, retorna `:already_proposed`.
   """
-  @spec propose(t, term) :: :ok
+  @spec propose(t, term) :: {:ok | :noop, term}
   def propose(paxos, value), do: GenServer.call(paxos, {:propose, value}, :infinity)
-
-  @doc """
-  Obtém o valor decidido no consenso. Caso o consenso ainda não tenha se resolvido ou o nó atual
-  não saiba do resultado, bloqueia até que um valor esteja disponível por no máximo `timeout`ms.
-  """
-  @spec get_decree(t, pos_integer | :infinity) :: term
-  def get_decree(paxos, timeout \\ :infinity), do: GenServer.call(paxos, :get_decree, timeout)
 
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(opts) do
@@ -326,16 +317,6 @@ defmodule MC714.P2.Consensus.Paxos do
         |> State.with_proposal(value)
         |> request_ballot(seq + 1)
 
-      state = State.add_callback(state, from)
-      {:noreply, state}
-    end
-  end
-
-  @impl GenServer
-  def handle_call(:get_decree, from, state) do
-    if state.decided do
-      {:reply, {:ok, state.decided_value}, state}
-    else
       state = State.add_callback(state, from)
       {:noreply, state}
     end

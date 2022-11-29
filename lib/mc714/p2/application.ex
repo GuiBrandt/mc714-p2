@@ -23,7 +23,11 @@ defmodule MC714.P2.Application do
 
   @impl Application
   def prep_stop(state) do
-    :ok = MC714.P2.Consensus.disconnect()
+    paxos_config = Application.fetch_env!(:mc714_p2, :paxos)
+    node = paxos_config[:node]
+    root = paxos_config[:root]
+    if node != root, do: :ok = MC714.P2.Consensus.disconnect()
+    MC714.P2.Consensus.StateMachine.commit()
     state
   end
 

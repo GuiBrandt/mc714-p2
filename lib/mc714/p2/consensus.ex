@@ -3,9 +3,9 @@ defmodule MC714.P2.Consensus do
   Módulo de consenso distribuído.
   """
 
-  def decrees(), do: MC714.P2.Consensus.Manager.StateMachine.get_decrees()
+  def decrees(), do: MC714.P2.Consensus.StateMachine.get_decrees()
 
-  def acceptors(), do: MC714.P2.Consensus.Manager.StateMachine.get_acceptors()
+  def acceptors(), do: MC714.P2.Consensus.StateMachine.get_acceptors()
 
   def request(value), do: GenServer.call(MC714.P2.Consensus, {:request, value}, :infinity)
 

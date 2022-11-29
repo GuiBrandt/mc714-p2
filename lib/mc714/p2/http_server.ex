@@ -26,7 +26,7 @@ defmodule MC714.P2.HttpServer do
   get "/ledger" do
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(200, Poison.encode!(MC714.P2.Consensus.decrees()))
+    |> send_resp(200, Poison.encode!(decrees()))
   end
 
   get "/paxos-acceptors" do
@@ -48,6 +48,15 @@ defmodule MC714.P2.HttpServer do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(404, Poison.encode!(not_found()))
+  end
+
+  defp decrees do
+    {seqno, items} = MC714.P2.Consensus.decrees()
+
+    %{
+      _seq: seqno,
+      decrees: items
+    }
   end
 
   defp cluster_status,
