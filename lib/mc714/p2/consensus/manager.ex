@@ -21,6 +21,7 @@ defmodule MC714.P2.Consensus.Manager do
   end
 
   defmodule Proxy do
+    require Logger
     use GenServer
 
     def start_link(opts), do: GenServer.start_link(__MODULE__, nil, opts)
@@ -33,12 +34,7 @@ defmodule MC714.P2.Consensus.Manager do
       Task.Supervisor.start_child(
         MC714.P2.Consensus.Manager.TaskSupervisor,
         fn ->
-          GenServer.call(MC714.P2.Consensus.Manager, {:ensure_exists, seqno})
-
-          if elem(message, 0) == :success do
-            MC714.P2.Consensus.Manager.StateMachine.decree(seqno, elem(message, 1))
-          end
-
+          GenServer.call(MC714.P2.Consensus.Manager, {:ensure_exists, seqno, true}, :infinity)
           GenServer.cast(MC714.P2.Consensus.Manager.via_paxos(seqno), message)
         end
       )
@@ -85,12 +81,11 @@ defmodule MC714.P2.Consensus.Manager do
         Agent.update(__MODULE__, fn state ->
           cond do
             state.seqno == seqno - 1 -> State.next_decree(state, decree)
-            state.seqno >= seqno -> state
+            true -> state
           end
         end)
 
     def get_state(), do: Agent.get(__MODULE__, & &1)
-
     def get_seqno(), do: Agent.get(__MODULE__, & &1.seqno)
     def get_decrees(), do: Agent.get(__MODULE__, & &1.decrees)
     def get_acceptors(), do: Agent.get(__MODULE__, & &1.acceptors)
@@ -136,39 +131,18 @@ defmodule MC714.P2.Consensus.Manager do
       end
     end
 
-    @impl GenServer
-    def handle_info({:timeout, lock_key}, state) do
-      MC714.P2.Mutex.release(lock_key)
-      {:noreply, state}
-    end
-
     defp until_pass(value) do
-      seqno = GenServer.call(MC714.P2.Consensus.Manager, :seqno) + 1
-      GenServer.call(MC714.P2.Consensus.Manager, {:ensure_exists, seqno})
+      seqno = StateMachine.get_seqno() + 1
+      GenServer.call(MC714.P2.Consensus.Manager, {:ensure_exists, seqno, true}, :infinity)
 
-      lock_key = {MC714.P2.Consensus, seqno}
+      uid = :rand.bytes(16)
+      instance = MC714.P2.Consensus.Manager.via_paxos(seqno)
+      {_, decree} = GenServer.call(instance, {:propose, {uid, value}}, :infinity)
+      StateMachine.decree(seqno, decree)
 
-      release_ref = Process.send_after(self(), {:timeout, lock_key}, 10_000)
-
-      case MC714.P2.Mutex.lock(lock_key) do
-       :ok ->
-          uid = :rand.bytes(16)
-          instance = MC714.P2.Consensus.Manager.via_paxos(seqno)
-
-          {_, decree} = GenServer.call(instance, {:propose, {uid, value}})
-
-          :ok = MC714.P2.Mutex.release(lock_key)
-          Process.cancel_timer(release_ref)
-
-          StateMachine.decree(seqno, decree)
-
-          case decree do
-            {uid2, _} when uid == uid2 -> :ok
-            _ -> until_pass(value)
-          end
-
-       {:failed, :timeout} ->
-         until_pass(value)
+      case decree do
+        {uid2, _} when uid == uid2 -> :ok
+        _ -> until_pass(value)
       end
     end
   end
@@ -208,26 +182,29 @@ defmodule MC714.P2.Consensus.Manager do
   end
 
   @impl GenServer
-  def handle_call({:ensure_exists, seqno}, _from, state) do
-    if state.seqno < seqno, do: create_consensus(state, seqno)
+  def handle_call({:ensure_exists, seqno, new}, _from, state) do
+    seqno = if state.seqno < seqno do
+      create_consensus(state, seqno, new)
+    else
+      state.seqno
+    end
 
     state = %{state | seqno: seqno}
+
     {:reply, :ok, state}
   end
 
   def handle_call(:seqno, _from, state), do: {:reply, state.seqno, state}
 
-  defp create_consensus(state, seqno, new \\ true)
-
   defp create_consensus(state, seqno, new) when seqno > state.seqno do
-    :ok = create_consensus(state, seqno - 1, false)
+    seq_decided = create_consensus(state, seqno - 1, false)
 
     instance = via_paxos(seqno)
 
     paxos_opts = [
       name: instance,
       key: seqno,
-      ledger: "paxos.#{seqno}.ledger", # "/var/paxos/#{seqno}",
+      ledger: "/var/paxos/#{seqno}",
       acceptors: StateMachine.get_acceptors(),
       request_timeout: state.request_timeout,
       node: Application.fetch_env!(:mc714_p2, :paxos)[:node]
@@ -244,14 +221,19 @@ defmodule MC714.P2.Consensus.Manager do
       {_, decree} = GenServer.call(instance, {:propose, :noop})
       StateMachine.decree(seqno, decree)
       Logger.info("Created consensus #{seqno}, with decree #{inspect(decree)}")
-    else
-      Logger.info("Created consensus #{seqno} with no decree")
-    end
 
-    :ok
+      if seq_decided == seqno - 1 do
+        seqno
+      else
+        seq_decided
+      end
+    else
+      Logger.info("Created consensus #{seqno} with no known decree")
+      seq_decided
+    end
   end
 
-  defp create_consensus(state, seqno, _) when seqno <= state.seqno, do: :ok
+  defp create_consensus(state, seqno, _) when seqno <= state.seqno, do: state.seqno
 
   def via_paxos(key), do: via_registry(key, MC714.P2.Consensus.Paxos)
   defp via_registry(key, module), do: {:via, Registry, {@registry, {key, module}, module}}

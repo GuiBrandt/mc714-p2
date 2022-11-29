@@ -163,7 +163,7 @@ defmodule MC714.P2.Consensus.Paxos do
     def with_next_ballot(state, ballot), do: %{state | next_ballot: ballot} |> State.persist()
 
     def cancel_timeout(state) do
-      Process.cancel_timer(state.request_timeout_ref)
+      if state.request_timeout_ref != nil, do: Process.cancel_timer(state.request_timeout_ref)
       %{state | request_timeout_ref: nil}
     end
 
@@ -235,6 +235,7 @@ defmodule MC714.P2.Consensus.Paxos do
           callback: []
       }
       |> State.persist()
+      |> State.cancel_timeout()
     end
 
     def with_timeout(state, timeout) do
@@ -280,14 +281,14 @@ defmodule MC714.P2.Consensus.Paxos do
   Esta função só pode ser chamada uma vez. Caso contrário, retorna `:already_proposed`.
   """
   @spec propose(t, term) :: :ok
-  def propose(paxos, value), do: GenServer.call(paxos, {:propose, value})
+  def propose(paxos, value), do: GenServer.call(paxos, {:propose, value}, :infinity)
 
   @doc """
   Obtém o valor decidido no consenso. Caso o consenso ainda não tenha se resolvido ou o nó atual
   não saiba do resultado, bloqueia até que um valor esteja disponível por no máximo `timeout`ms.
   """
-  @spec get_decree(t, pos_integer) :: term
-  def get_decree(paxos, timeout \\ 5_000), do: GenServer.call(paxos, :get_decree, timeout)
+  @spec get_decree(t, pos_integer | :infinity) :: term
+  def get_decree(paxos, timeout \\ :infinity), do: GenServer.call(paxos, :get_decree, timeout)
 
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(opts) do
@@ -343,9 +344,10 @@ defmodule MC714.P2.Consensus.Paxos do
   @impl GenServer
   def handle_cast(message, state) when state.decided do
     if elem(message, 0) == :success do
-      :ignore
+      State.reached_consensus(state)
     else
       peer = elem(message, 1)
+      Logger.info("Got message #{inspect(message)} from peer #{inspect(peer)} after decision; sending success response")
       RPC.success(peer, state.key, state.decided_value)
     end
 
@@ -361,7 +363,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
         # Não participa de urnas anteriores a alguma em que já concordou em participar.
         ballot < state.previous_ballot ->
-          Logger.info("Rejecting stale ballot: #{inspect(ballot)}")
+          Logger.info("Rejecting stale ballot #{inspect(ballot)} on consensus #{state.key}")
           RPC.reject_ballot(peer, state.key, ballot, state.previous_ballot)
           state
 
@@ -369,7 +371,7 @@ defmodule MC714.P2.Consensus.Paxos do
         # anterior. Também informa o valor em que votou na maior urna anterior a esta (se votou em
         # alguma).
         true ->
-          Logger.info("Accepting ballot: #{inspect(ballot)}")
+          Logger.info("Accepting ballot #{inspect(ballot)} on consensus #{state.key}")
 
           state = State.with_next_ballot(state, ballot)
 
@@ -384,7 +386,7 @@ defmodule MC714.P2.Consensus.Paxos do
   def handle_cast({:ballot_reject, peer, ballot, max_ballot}, state)
       when ballot == state.last_tried do
     Logger.info(
-      "Ballot was rejected by peer #{inspect(peer)}: #{inspect(ballot)}, max ballot was " <>
+      "Ballot on consensus #{state.key} was rejected by peer #{inspect(peer)}: #{inspect(ballot)}, max ballot was " <>
         inspect(max_ballot)
     )
 
@@ -400,7 +402,7 @@ defmodule MC714.P2.Consensus.Paxos do
         seq = max(max_seq, seq) + 1
 
         Logger.info(
-          "Ballot rejected by quorum: #{inspect(ballot)}. Trying again with sequence number #{seq}."
+          "Ballot on consensus #{state.key} rejected by quorum: #{inspect(ballot)}. Trying again with sequence number #{seq}."
         )
 
         state
@@ -418,7 +420,7 @@ defmodule MC714.P2.Consensus.Paxos do
   def handle_cast({:ballot_accept, peer, ballot, max_ballot, max_ballot_value}, state)
       when ballot == state.last_tried and state.phase == :request_ballot do
     Logger.info(
-      "Ballot was accepted by peer #{inspect(peer)}: #{inspect(ballot)}. Max ballot was " <>
+      "Ballot on consensus #{state.key} was accepted by peer #{inspect(peer)}: #{inspect(ballot)}. Max ballot was " <>
         inspect(max_ballot) <> ", with value #{inspect(max_ballot_value)}."
     )
 
@@ -438,7 +440,7 @@ defmodule MC714.P2.Consensus.Paxos do
             state.proposal
           end
 
-        Logger.info("Ballot accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}.")
+        Logger.info("Ballot on consensus #{state.key} accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}.")
 
         # Envia a proposta para cada nó no quorum.
         state = State.enter_propose_phase(state, value)
@@ -457,7 +459,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:begin_ballot, peer, ballot, value}, state)
       when ballot == state.next_ballot and state.next_ballot > state.previous_ballot do
-    Logger.info("Voting for ballot #{inspect(ballot)} with value #{inspect(value)}.")
+    Logger.info("Voting for ballot #{inspect(ballot)} with value #{inspect(value)} on consensus #{state.key}.")
 
     state = State.voted(state, ballot, value)
     RPC.vote(peer, state.key, ballot)
@@ -475,7 +477,7 @@ defmodule MC714.P2.Consensus.Paxos do
       if MapSet.subset?(state.voted, state.accepted) do
         # Quando alguma maioria vota na mesma urna, chegou-se a um consenso.
         Logger.info(
-          "Consensus reached on ballot #{inspect(ballot)} with value #{inspect(state.current_value)}."
+          "Consensus #{state.key} reached on ballot #{inspect(ballot)} with value #{inspect(state.current_value)}."
         )
 
         state = State.reached_consensus(state)
@@ -491,7 +493,7 @@ defmodule MC714.P2.Consensus.Paxos do
   end
 
   def handle_cast({:success, value}, state) do
-    Logger.info("Consensus reached with value #{inspect(value)}.")
+    Logger.info("Consensus #{state.key} reached with value #{inspect(value)}.")
 
     state = State.with_value(state, value) |> State.reached_consensus()
     {:noreply, state}
@@ -508,7 +510,7 @@ defmodule MC714.P2.Consensus.Paxos do
     {seq, _} = max(state.last_tried, state.max_rejected_ballot)
     seq = seq + 1
 
-    Logger.warn("Ballot request timed out. Retrying with sequence number #{seq}.")
+    Logger.warn("Ballot request timed out on consensus #{state.key}. Retrying with sequence number #{seq}.")
 
     state = request_ballot(state, seq)
     {:noreply, state}
@@ -519,7 +521,7 @@ defmodule MC714.P2.Consensus.Paxos do
   defp request_ballot(state, seq) do
     ballot = {seq, state.node}
 
-    Logger.info("Requesting creation of ballot #{inspect(ballot)}.")
+    Logger.info("Requesting creation of ballot #{inspect(ballot)} on consensus #{state.key}. State: #{inspect(state)}")
 
     state =
       if state.request_timeout != :infinity do

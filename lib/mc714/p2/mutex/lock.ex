@@ -150,12 +150,18 @@ defmodule MC714.P2.Mutex.Lock do
   end
 
   def handle_call({:lock, timeout}, requester, state) do
+    Logger.info("Locking #{inspect(state.internal.key)}")
+
     timestamp = LogicClock.tick(state.internal.logic_clock)
     peers = [Node.self() | Node.list()]
 
     for peer <- peers, do: RPC.request_lock(peer, state.internal.key, timestamp)
 
-    timeout_ref = Process.send_after(self(), :timeout, timeout)
+    timeout_ref = if timeout == :infinity do
+      nil
+    else
+      Process.send_after(self(), :timeout, timeout)
+    end
 
     state =
       state
@@ -267,7 +273,7 @@ defmodule MC714.P2.Mutex.Lock do
 
       # Se não, podemos cancelar o timeout; caso o cancelamento falhe, consideramos que o
       # tempo limite foi excedido, e limpamos o estado.
-      !Process.cancel_timer(state.internal.timeout_ref) ->
+      state.internal.timeout_ref != nil and !Process.cancel_timer(state.internal.timeout_ref) ->
         State.reset(state)
 
       # Caso contrário, confirmamos a aquisição do mutex ao processo que o pediu e atualizamos o

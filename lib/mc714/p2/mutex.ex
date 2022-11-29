@@ -20,8 +20,8 @@ defmodule MC714.P2.Mutex do
   - `:timeout`: A requisição expirou antes que o acesso à seção crítica pudesse ser obtido.
   """
   @spec lock(term) :: on_lock
-  @spec lock(term, pos_integer) :: on_lock
-  def lock(key, timeout \\ 5_000),
+  @spec lock(term, pos_integer | :infinity) :: on_lock
+  def lock(key, timeout \\ :infinity),
     do: GenServer.call(MC714.P2.Mutex, {key, {:lock, timeout}}, :infinity)
 
   @doc """
