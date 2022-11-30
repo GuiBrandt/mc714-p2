@@ -177,6 +177,8 @@ defmodule MC714.P2.Mutex.Lock do
   end
 
   def handle_call(:release, _from, state) do
+    t = LogicClock.tick(state.internal.logic_clock)
+    Logger.debug("Lock #{inspect(state.internal.key)} released at t = #{t}")
     resolve_deferred(state)
     state = State.reset(state)
     {:reply, :ok, state}
@@ -187,7 +189,7 @@ defmodule MC714.P2.Mutex.Lock do
     # Ajustamos o relógio lógico com base na mensagem recebida.
     local_timestamp = LogicClock.coalesce(state.internal.logic_clock, peer_timestamp)
 
-    Logger.info(
+    Logger.debug(
       "Peer #{peer} requested lock #{inspect(state.internal.key)} at t = #{local_timestamp}" <>
         ", with t = #{peer_timestamp}"
     )
@@ -221,7 +223,7 @@ defmodule MC714.P2.Mutex.Lock do
     # Ajustamos o relógio lógico com base na mensagem recebida.
     timestamp = LogicClock.coalesce(state.internal.logic_clock, timestamp)
 
-    Logger.info("Lock #{inspect(state.internal.key)} allowed by peer #{peer} at t = #{timestamp}")
+    Logger.debug("Lock #{inspect(state.internal.key)} allowed by peer #{peer} at t = #{timestamp}")
 
     # Atualizamos a lista de nós faltantes e confirmamos se podemos entrar na seção crítica.
     state =
@@ -234,7 +236,7 @@ defmodule MC714.P2.Mutex.Lock do
 
   @impl GenServer
   def handle_info(:timeout, state) when state.locking do
-    Logger.info("Request for lock #{inspect(state.internal.key)} timed out")
+    Logger.warn("Request for lock #{inspect(state.internal.key)} timed out")
     GenServer.reply(state.internal.requester, {:failed, :timeout})
     resolve_deferred(state)
     state = State.reset(state)
@@ -243,6 +245,12 @@ defmodule MC714.P2.Mutex.Lock do
 
   @impl GenServer
   def handle_info(:timeout, state), do: {:noreply, state}
+
+  @impl GenServer
+  def terminate(_reason, state) do
+    resolve_deferred(state)
+    state
+  end
 
   defp has_lock_priority(state, peer, peer_timestamp) do
     cond do
@@ -280,6 +288,7 @@ defmodule MC714.P2.Mutex.Lock do
       # estado indicando que o nó atual está na seção crítica.
       true ->
         GenServer.reply(state.internal.requester, :ok)
+        Logger.info("Lock #{inspect(state.internal.key)} acquired at t = #{LogicClock.timestamp(state.internal.logic_clock)}")
         State.lock_acquired(state)
     end
   end

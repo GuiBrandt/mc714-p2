@@ -13,21 +13,19 @@ defmodule MC714.P2.Consensus.Manager do
           | {:request_timeout, pos_integer}
         ]
 
-  require Logger
   use GenServer
 
   alias MC714.P2.Consensus.StateMachine
   alias MC714.P2.Consensus.Proposer
 
   defmodule State do
-    defstruct [:request_timeout, :decided_seqno, :supervisor]
+    defstruct [:request_timeout, :supervisor]
   end
 
   defmodule Proxy do
-    require Logger
     use GenServer
 
-    def start_link(opts), do: GenServer.start_link(__MODULE__, nil, opts)
+    def start_link(opts), do: GenServer.start_link(__MODULE__, :ok, opts)
 
     @impl GenServer
     def init(state), do: {:ok, state}
@@ -51,11 +49,7 @@ defmodule MC714.P2.Consensus.Manager do
 
   @spec start_link(options()) :: GenServer.on_start()
   def start_link(opts) do
-    state = %State{
-      request_timeout: opts[:request_timeout],
-      # decided_seqno: -1
-    }
-
+    state = %State{request_timeout: opts[:request_timeout]}
     GenServer.start_link(__MODULE__, state, [{:name, __MODULE__} | opts])
   end
 
@@ -68,8 +62,8 @@ defmodule MC714.P2.Consensus.Manager do
           {DynamicSupervisor, strategy: :one_for_one, name: @supervisor},
           {Proxy, name: @proxy},
           {Proposer, name: MC714.P2.Consensus},
-          {Task.Supervisor, name: MC714.P2.Consensus.Manager.TaskSupervisor},
-          StateMachine
+          StateMachine,
+          {Task.Supervisor, name: MC714.P2.Consensus.Manager.TaskSupervisor}
         ],
         strategy: :one_for_one
       )
@@ -100,11 +94,13 @@ defmodule MC714.P2.Consensus.Manager do
 
     instance = via_paxos(seqno)
 
+    {_, acceptors} = StateMachine.get_acceptors()
+
     paxos_opts = [
       name: instance,
       key: seqno,
       ledger: "/var/paxos/#{seqno}.ledger",
-      acceptors: StateMachine.get_acceptors(),
+      acceptors: acceptors,
       request_timeout: state.request_timeout,
       node: Application.fetch_env!(:mc714_p2, :paxos)[:node]
     ]

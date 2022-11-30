@@ -328,7 +328,6 @@ defmodule MC714.P2.Consensus.Paxos do
       State.reached_consensus(state)
     else
       peer = elem(message, 1)
-      Logger.info("Got message #{inspect(message)} from peer #{inspect(peer)} after decision; sending success response")
       RPC.success(peer, state.key, state.decided_value)
     end
 
@@ -344,7 +343,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
         # Não participa de urnas anteriores a alguma em que já concordou em participar.
         ballot < state.previous_ballot ->
-          Logger.info("Rejecting stale ballot #{inspect(ballot)} on consensus #{state.key}")
+          Logger.debug("Rejecting stale ballot #{inspect(ballot)} on consensus #{state.key}")
           RPC.reject_ballot(peer, state.key, ballot, state.previous_ballot)
           state
 
@@ -352,7 +351,7 @@ defmodule MC714.P2.Consensus.Paxos do
         # anterior. Também informa o valor em que votou na maior urna anterior a esta (se votou em
         # alguma).
         true ->
-          Logger.info("Accepting ballot #{inspect(ballot)} on consensus #{state.key}")
+          Logger.debug("Accepting ballot #{inspect(ballot)} on consensus #{state.key}")
 
           state = State.with_next_ballot(state, ballot)
 
@@ -366,7 +365,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:ballot_reject, peer, ballot, max_ballot}, state)
       when ballot == state.last_tried do
-    Logger.info(
+    Logger.debug(
       "Ballot on consensus #{state.key} was rejected by peer #{inspect(peer)}: #{inspect(ballot)}, max ballot was " <>
         inspect(max_ballot)
     )
@@ -382,7 +381,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
         seq = max(max_seq, seq) + 1
 
-        Logger.info(
+        Logger.debug(
           "Ballot on consensus #{state.key} rejected by quorum: #{inspect(ballot)}. Trying again with sequence number #{seq}."
         )
 
@@ -400,7 +399,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:ballot_accept, peer, ballot, max_ballot, max_ballot_value}, state)
       when ballot == state.last_tried and state.phase == :request_ballot do
-    Logger.info(
+    Logger.debug(
       "Ballot on consensus #{state.key} was accepted by peer #{inspect(peer)}: #{inspect(ballot)}. Max ballot was " <>
         inspect(max_ballot) <> ", with value #{inspect(max_ballot_value)}."
     )
@@ -421,7 +420,7 @@ defmodule MC714.P2.Consensus.Paxos do
             state.proposal
           end
 
-        Logger.info("Ballot on consensus #{state.key} accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}.")
+        Logger.debug("Ballot on consensus #{state.key} accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}.")
 
         # Envia a proposta para cada nó no quorum.
         state = State.enter_propose_phase(state, value)
@@ -440,7 +439,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:begin_ballot, peer, ballot, value}, state)
       when ballot == state.next_ballot and state.next_ballot > state.previous_ballot do
-    Logger.info("Voting for ballot #{inspect(ballot)} with value #{inspect(value)} on consensus #{state.key}.")
+    Logger.debug("Voting for ballot #{inspect(ballot)} with value #{inspect(value)} on consensus #{state.key}.")
 
     state = State.voted(state, ballot, value)
     RPC.vote(peer, state.key, ballot)
@@ -450,7 +449,7 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:vote, peer, ballot}, state)
       when ballot == state.last_tried and state.phase == :propose_value do
-    Logger.info("Peer #{inspect(peer)} voted on ballot #{inspect(ballot)}.")
+    Logger.debug("Peer #{inspect(peer)} voted on ballot #{inspect(ballot)} on consensus #{state.key}.")
 
     state = State.add_vote(state, peer)
 
@@ -502,7 +501,7 @@ defmodule MC714.P2.Consensus.Paxos do
   defp request_ballot(state, seq) do
     ballot = {seq, state.node}
 
-    Logger.info("Requesting creation of ballot #{inspect(ballot)} on consensus #{state.key}. State: #{inspect(state)}")
+    Logger.debug("Requesting creation of ballot #{inspect(ballot)} on consensus #{state.key}. State: #{inspect(state)}")
 
     state =
       if state.request_timeout != :infinity do

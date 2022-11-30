@@ -10,7 +10,7 @@ defmodule MC714.P2.HttpServer do
   plug(:dispatch)
 
   def init(options) do
-    Logger.info("Server up at #{node()}")
+    Logger.info("Server up on #{node()}")
     options
   end
 
@@ -25,14 +25,16 @@ defmodule MC714.P2.HttpServer do
 
   get "/ledger" do
     conn
+    |> honor_consistency()
     |> put_resp_content_type("application/json")
     |> send_resp(200, Poison.encode!(decrees()))
   end
 
   get "/paxos-acceptors" do
     conn
+    |> honor_consistency()
     |> put_resp_content_type("application/json")
-    |> send_resp(200, Poison.encode!(MC714.P2.Consensus.acceptors()))
+    |> send_resp(200, Poison.encode!(paxos_acceptors()))
   end
 
   post "/decree" do
@@ -50,12 +52,30 @@ defmodule MC714.P2.HttpServer do
     |> send_resp(404, Poison.encode!(not_found()))
   end
 
-  defp decrees do
+  defp honor_consistency(conn) do
+    case get_req_header(conn, "x-consistent-read") do
+      ["true" | _] -> MC714.P2.Consensus.sync()
+      _ -> :ok
+    end
+
+    conn
+  end
+
+  defp decrees() do
     {seqno, items} = MC714.P2.Consensus.decrees()
 
     %{
       _seq: seqno,
       decrees: items
+    }
+  end
+
+  defp paxos_acceptors() do
+    {seqno, acceptors} = MC714.P2.Consensus.acceptors()
+
+    %{
+      _seq: seqno,
+      acceptors: acceptors
     }
   end
 

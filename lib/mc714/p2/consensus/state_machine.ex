@@ -4,7 +4,7 @@ defmodule MC714.P2.Consensus.StateMachine do
   defmodule State do
     defstruct [:seqno, :decrees, :acceptors]
 
-    def next_decree(state, :noop), do: state |> increment_seqno()
+    def next_decree(state, {_, :noop}), do: state |> increment_seqno()
 
     def next_decree(state, {_, {:new_acceptor, node}}),
       do: %{state | acceptors: MapSet.put(state.acceptors, node)} |> increment_seqno()
@@ -73,5 +73,5 @@ defmodule MC714.P2.Consensus.StateMachine do
   def get_state(sm \\ __MODULE__), do: Agent.get(sm, & &1)
   def get_seqno(sm \\ __MODULE__), do: Agent.get(sm, & &1.seqno)
   def get_decrees(sm \\ __MODULE__), do: Agent.get(sm, & {&1.seqno, &1.decrees})
-  def get_acceptors(sm \\ __MODULE__), do: Agent.get(sm, & &1.acceptors)
+  def get_acceptors(sm \\ __MODULE__), do: Agent.get(sm, & {&1.seqno, &1.acceptors})
 end

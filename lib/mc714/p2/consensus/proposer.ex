@@ -1,4 +1,6 @@
 defmodule MC714.P2.Consensus.Proposer do
+  @lock_timeout 1_000
+
   use GenServer
 
   alias MC714.P2.Consensus.StateMachine
@@ -9,33 +11,44 @@ defmodule MC714.P2.Consensus.Proposer do
   def init(state), do: {:ok, state}
 
   @impl GenServer
-  def handle_call({:request, value}, _from, _state) do
+  def handle_call({:request, value}, _from, state) do
     seqno = until_pass({:decree, value})
-    {:reply, :ok, seqno}
+    {:reply, seqno, state}
+  end
+
+  def handle_call(:sync, _from, state) do
+    seqno = until_pass(:noop)
+    {:reply, seqno, state}
   end
 
   def handle_call(:become_acceptor, _from, state) do
     node = Application.fetch_env!(:mc714_p2, :paxos)[:node]
 
-    acceptors = StateMachine.get_acceptors()
+    # Sincroniza antes de tentar conectar
+    until_pass(:noop)
+
+    {_, acceptors} = StateMachine.get_acceptors()
 
     if MapSet.member?(acceptors, node) do
       {:reply, :noop, state}
     else
-      :ok = until_pass({:new_acceptor, node})
-      {:reply, :ok, state}
+      seqno = until_pass({:new_acceptor, node})
+      {:reply, seqno, state}
     end
   end
 
   def handle_call(:disconnect, _from, state) do
     node = Application.fetch_env!(:mc714_p2, :paxos)[:node]
 
-    acceptors = StateMachine.get_acceptors()
+    # Sincroniza antes de tentar desconectar
+    until_pass(:noop)
+
+    {_, acceptors} = StateMachine.get_acceptors()
 
     if not MapSet.member?(acceptors, node) do
       {:reply, :noop, state}
     else
-      :ok = until_pass({:disconnect, node})
+      until_pass({:disconnect, node})
       {:reply, :ok, state}
     end
   end
@@ -45,7 +58,7 @@ defmodule MC714.P2.Consensus.Proposer do
     MC714.P2.Consensus.Manager.ensure_exists(seqno)
 
     lock_key = {MC714.P2.Consensus, seqno}
-    case MC714.P2.Mutex.lock(lock_key, 5_000) do
+    case MC714.P2.Mutex.lock(lock_key, @lock_timeout) do
       :ok ->
         uid = :rand.bytes(16)
         instance = MC714.P2.Consensus.Manager.via_paxos(seqno)
@@ -55,7 +68,7 @@ defmodule MC714.P2.Consensus.Proposer do
         StateMachine.decree(seqno, decree)
 
         case decree do
-          {uid2, _} when uid == uid2 -> :ok
+          {uid2, _} when uid == uid2 -> seqno
           _ -> until_pass(value)
         end
 
