@@ -82,6 +82,7 @@ defmodule MC714.P2.Consensus.Manager do
     if Registry.lookup(@registry, {seqno, MC714.P2.Consensus.Paxos}) == [] do
       create_consensus(state, seqno)
     end
+
     {:reply, :ok, state}
   end
 

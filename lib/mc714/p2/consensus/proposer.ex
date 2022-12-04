@@ -48,8 +48,8 @@ defmodule MC714.P2.Consensus.Proposer do
     if not MapSet.member?(acceptors, node) do
       {:reply, :noop, state}
     else
-      until_pass({:disconnect, node})
-      {:reply, :ok, state}
+      seqno = until_pass({:disconnect, node})
+      {:reply, seqno, state}
     end
   end
 
@@ -58,6 +58,7 @@ defmodule MC714.P2.Consensus.Proposer do
     MC714.P2.Consensus.Manager.ensure_exists(seqno)
 
     lock_key = {MC714.P2.Consensus, seqno}
+
     case MC714.P2.Mutex.lock(lock_key, @lock_timeout) do
       :ok ->
         uid = :rand.bytes(16)

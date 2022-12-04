@@ -420,7 +420,9 @@ defmodule MC714.P2.Consensus.Paxos do
             state.proposal
           end
 
-        Logger.debug("Ballot on consensus #{state.key} accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}.")
+        Logger.debug(
+          "Ballot on consensus #{state.key} accepted by quorum: #{inspect(ballot)}. Value is #{inspect(value)}."
+        )
 
         # Envia a proposta para cada nó no quorum.
         state = State.enter_propose_phase(state, value)
@@ -439,7 +441,9 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:begin_ballot, peer, ballot, value}, state)
       when ballot == state.next_ballot and state.next_ballot > state.previous_ballot do
-    Logger.debug("Voting for ballot #{inspect(ballot)} with value #{inspect(value)} on consensus #{state.key}.")
+    Logger.debug(
+      "Voting for ballot #{inspect(ballot)} with value #{inspect(value)} on consensus #{state.key}."
+    )
 
     state = State.voted(state, ballot, value)
     RPC.vote(peer, state.key, ballot)
@@ -449,7 +453,9 @@ defmodule MC714.P2.Consensus.Paxos do
 
   def handle_cast({:vote, peer, ballot}, state)
       when ballot == state.last_tried and state.phase == :propose_value do
-    Logger.debug("Peer #{inspect(peer)} voted on ballot #{inspect(ballot)} on consensus #{state.key}.")
+    Logger.debug(
+      "Peer #{inspect(peer)} voted on ballot #{inspect(ballot)} on consensus #{state.key}."
+    )
 
     state = State.add_vote(state, peer)
 
@@ -490,7 +496,9 @@ defmodule MC714.P2.Consensus.Paxos do
     {seq, _} = max(state.last_tried, state.max_rejected_ballot)
     seq = seq + 1
 
-    Logger.warn("Ballot request timed out on consensus #{state.key}. Retrying with sequence number #{seq}.")
+    Logger.warn(
+      "Ballot request timed out on consensus #{state.key}. Retrying with sequence number #{seq}."
+    )
 
     state = request_ballot(state, seq)
     {:noreply, state}
@@ -501,7 +509,9 @@ defmodule MC714.P2.Consensus.Paxos do
   defp request_ballot(state, seq) do
     ballot = {seq, state.node}
 
-    Logger.debug("Requesting creation of ballot #{inspect(ballot)} on consensus #{state.key}. State: #{inspect(state)}")
+    Logger.debug(
+      "Requesting creation of ballot #{inspect(ballot)} on consensus #{state.key}. State: #{inspect(state)}"
+    )
 
     state =
       if state.request_timeout != :infinity do

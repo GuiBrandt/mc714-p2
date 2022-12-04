@@ -49,6 +49,7 @@ defmodule MC714.P2.Consensus.StateMachine do
   defp fetch_state([peer | rest]) do
     peer_state = get_state({__MODULE__, peer})
     most_recent = fetch_state(rest)
+
     if peer_state.seqno > most_recent.seqno do
       peer_state
     else
@@ -72,6 +73,6 @@ defmodule MC714.P2.Consensus.StateMachine do
 
   def get_state(sm \\ __MODULE__), do: Agent.get(sm, & &1)
   def get_seqno(sm \\ __MODULE__), do: Agent.get(sm, & &1.seqno)
-  def get_decrees(sm \\ __MODULE__), do: Agent.get(sm, & {&1.seqno, &1.decrees})
-  def get_acceptors(sm \\ __MODULE__), do: Agent.get(sm, & {&1.seqno, &1.acceptors})
+  def get_decrees(sm \\ __MODULE__), do: Agent.get(sm, &{&1.seqno, &1.decrees})
+  def get_acceptors(sm \\ __MODULE__), do: Agent.get(sm, &{&1.seqno, &1.acceptors})
 end

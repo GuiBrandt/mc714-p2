@@ -157,11 +157,12 @@ defmodule MC714.P2.Mutex.Lock do
 
     for peer <- peers, do: RPC.request_lock(peer, state.internal.key, timestamp)
 
-    timeout_ref = if timeout == :infinity do
-      nil
-    else
-      Process.send_after(self(), :timeout, timeout)
-    end
+    timeout_ref =
+      if timeout == :infinity do
+        nil
+      else
+        Process.send_after(self(), :timeout, timeout)
+      end
 
     state =
       state
@@ -223,7 +224,9 @@ defmodule MC714.P2.Mutex.Lock do
     # Ajustamos o relógio lógico com base na mensagem recebida.
     timestamp = LogicClock.coalesce(state.internal.logic_clock, timestamp)
 
-    Logger.debug("Lock #{inspect(state.internal.key)} allowed by peer #{peer} at t = #{timestamp}")
+    Logger.debug(
+      "Lock #{inspect(state.internal.key)} allowed by peer #{peer} at t = #{timestamp}"
+    )
 
     # Atualizamos a lista de nós faltantes e confirmamos se podemos entrar na seção crítica.
     state =
@@ -288,7 +291,11 @@ defmodule MC714.P2.Mutex.Lock do
       # estado indicando que o nó atual está na seção crítica.
       true ->
         GenServer.reply(state.internal.requester, :ok)
-        Logger.info("Lock #{inspect(state.internal.key)} acquired at t = #{LogicClock.timestamp(state.internal.logic_clock)}")
+
+        Logger.info(
+          "Lock #{inspect(state.internal.key)} acquired at t = #{LogicClock.timestamp(state.internal.logic_clock)}"
+        )
+
         State.lock_acquired(state)
     end
   end

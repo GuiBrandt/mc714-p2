@@ -3,10 +3,13 @@ defmodule MC714.P2.HttpServer do
   use Plug.Router
 
   plug(:match)
-  plug Plug.Parsers,
-       parsers: [:json],
-       pass: ["application/json"],
-       json_decoder: Poison
+
+  plug(Plug.Parsers,
+    parsers: [:json],
+    pass: ["application/json"],
+    json_decoder: Poison
+  )
+
   plug(:dispatch)
 
   def init(options) do
@@ -39,10 +42,12 @@ defmodule MC714.P2.HttpServer do
 
   post "/decree" do
     case conn.body_params do
-      %{"value" => value } ->
+      %{"value" => value} ->
         MC714.P2.Consensus.request(value)
         conn |> send_resp(201, "")
-      _ -> conn |> send_resp(400, "")
+
+      _ ->
+        conn |> send_resp(400, "")
     end
   end
 
