@@ -460,7 +460,7 @@ defmodule MC714.P2.Consensus.Paxos do
     state = State.add_vote(state, peer)
 
     state =
-      if MapSet.subset?(state.voted, state.accepted) do
+      if MapSet.subset?(state.accepted, state.voted) do
         # Quando alguma maioria vota na mesma urna, chegou-se a um consenso.
         Logger.info(
           "Consensus #{state.key} reached on ballot #{inspect(ballot)} with value #{inspect(state.current_value)}."

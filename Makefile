@@ -16,6 +16,9 @@ scale:
 tunnel:
 	@minikube service mc714-p2-http -n mc714-p2 --url
 
+pods:
+	@watch kubectl get pods -n mc714-p2
+
 logs:
 	@kubectl logs --max-log-requests=10 --prefix=true -f -l app=mc714-p2 -n mc714-p2
 
